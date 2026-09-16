@@ -1,0 +1,80 @@
+name: Tailscale monitor
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub's scheduler is best-effort: runs can be delayed a
+    # few minutes under load. The script measures real elapsed time, so delays
+    # shift the detection latency but never corrupt the statistics.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_digest:
+        description: 'Send the full analytics digest right now'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Log what would be sent without messaging Telegram'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# Never let two polls run at the same time - they would fight over the state branch.
+concurrency:
+  group: tailscale-monitor
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the monitor
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Restore saved state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/state_sync.sh restore
+
+      - name: Poll Tailscale, notify Telegram
+        env:
+          TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TAILNET: ${{ vars.TAILNET || '-' }}
+          TIMEZONE: ${{ vars.TIMEZONE || 'UTC' }}
+          DIGEST_HOUR: ${{ vars.DIGEST_HOUR || '9' }}
+          FLAP_CONFIRMATIONS: ${{ vars.FLAP_CONFIRMATIONS || '1' }}
+          ONLINE_SOURCE: ${{ vars.ONLINE_SOURCE || 'auto' }}
+          STATE_FILE: .state/state/state.json
+          LOG_DIR: .state/logs
+          FORCE_DIGEST: ${{ inputs.force_digest }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python3 monitor.py
+
+      - name: Persist state
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/state_sync.sh save
+
+      # The Tailscale API token expires (90 days by default) and the tailnet can
+      # reject calls - without this the monitor would just die quietly.
+      - name: Tell Telegram the poll failed
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data-urlencode "text=⚠️ <b>Tailscale monitor run failed</b>
+          The poll could not complete (expired API token, API outage or a bad state push).
+          <a href=\"${RUN_URL}\">Open the workflow run</a>" > /dev/null

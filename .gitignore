@@ -1,0 +1,7 @@
+.env
+.state/
+state/
+logs/
+tests/_sim/
+__pycache__/
+*.pyc
