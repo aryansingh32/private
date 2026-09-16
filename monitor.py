@@ -546,6 +546,34 @@ def render_batch(rendered: list[str], when: datetime) -> str:
     return header + "\n\n".join(rendered)
 
 
+def monitor_coverage(state: dict, when: datetime) -> str | None:
+    """How much of the day the monitor actually observed.
+
+    Gaps longer than MAX_GAP_SECONDS are never attributed to a device, so a
+    monitor outage shows up directly as missing coverage.
+    """
+    local = to_local(when)
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    elapsed_today = (local - midnight).total_seconds()
+    yesterday = (local - timedelta(days=1)).strftime("%Y-%m-%d")
+    live = [d for d in state["devices"].values() if not d.get("removed")]
+
+    def coverage(day: str, span: float) -> float | None:
+        seen = [d["daily"][day]["total"] for d in live if day in d["daily"]]
+        if not seen or span <= 0:
+            return None      # nothing observed that day - say nothing
+        return min(100.0, max(seen) / span * 100)
+
+    parts = []
+    today = coverage(local.strftime("%Y-%m-%d"), elapsed_today)
+    if today is not None:
+        parts.append(f"today {today:.0f}%")
+    prior = coverage(yesterday, 86400)
+    if prior is not None:
+        parts.append(f"yesterday {prior:.0f}%")
+    return " \u00b7 ".join(parts) if parts else None
+
+
 def render_digest(state: dict, when: datetime, title: str = "Daily report") -> str:
     devices = {k: v for k, v in state["devices"].items() if not v.get("removed")}
     online = [d for d in devices.values() if d["status"] == "online"]
@@ -553,8 +581,11 @@ def render_digest(state: dict, when: datetime, title: str = "Daily report") -> s
         f"\U0001F4CA <b>Tailscale {esc(title)}</b> · {esc(to_local(when).strftime('%Y-%m-%d %H:%M %Z'))}",
         f"{len(devices)} device(s) tracked · "
         f"\U0001F7E2 {len(online)} online · \U0001F534 {len(devices) - len(online)} offline",
-        "",
     ]
+    coverage = monitor_coverage(state, when)
+    if coverage:
+        lines.append(f"\U0001FA7A Monitor coverage: {esc(coverage)}")
+    lines.append("")
     for dev in sorted(devices.values(),
                       key=lambda d: (d["status"] != "online", d["name"].lower())):
         stats = analytics(dev, when)

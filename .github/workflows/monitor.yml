@@ -9,7 +9,10 @@ name: Tailscale monitor
 
 on:
   schedule:
-    - cron: '*/10 * * * *'      # watchdog: queues the next loop
+    # Watchdog only - it queues the next loop, it does not set the poll rate.
+    # Deliberately offset from :00, which is GitHub's most congested minute and
+    # the one most likely to be dropped.
+    - cron: '3,13,23,33,43,53 * * * *'
   workflow_dispatch:
     inputs:
       single_run:
@@ -38,9 +41,12 @@ concurrency:
 jobs:
   poll:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 350
     env:
-      LOOP_MINUTES: 50          # stay under the 60 min job timeout
+      LOOP_MINUTES: 330         # 5.5 h; GitHub's hard job limit is 6 h.
+                                # Long on purpose: every exit needs a watchdog
+                                # tick to hand over, so 4 handovers a day is far
+                                # safer than 24 when the cron is unreliable.
       POLL_INTERVAL: 300        # seconds between polls
     steps:
       - name: Check out the monitor
