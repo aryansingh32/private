@@ -1,26 +1,36 @@
 name: Tailscale monitor
 
+# GitHub's `schedule:` trigger is best-effort - a '*/5' cron is routinely delayed
+# by tens of minutes or coalesced away, so it cannot deliver 5-minute detection
+# on its own.  Instead ONE job polls in a loop for ~50 minutes, and the cron is
+# demoted to a watchdog that starts the next loop.  Because of the concurrency
+# group, a run triggered while the loop is busy sits pending and takes over the
+# moment the current one exits, which keeps coverage continuous.
+
 on:
   schedule:
-    # Every 5 minutes. GitHub's scheduler is best-effort: runs can be delayed a
-    # few minutes under load. The script measures real elapsed time, so delays
-    # shift the detection latency but never corrupt the statistics.
-    - cron: '*/5 * * * *'
+    - cron: '*/10 * * * *'      # watchdog: queues the next loop
   workflow_dispatch:
     inputs:
+      single_run:
+        description: 'Poll once and exit instead of looping'
+        type: boolean
+        default: false
       force_digest:
-        description: 'Send the full analytics digest right now'
+        description: 'Send the full analytics digest on the first poll'
         type: boolean
         default: false
       dry_run:
         description: 'Log what would be sent without messaging Telegram'
         type: boolean
         default: false
+  push:
+    branches: [main]            # start polling as soon as a change is deployed
+    paths-ignore: ['README.md', '.env.example']
 
 permissions:
   contents: write
 
-# Never let two polls run at the same time - they would fight over the state branch.
 concurrency:
   group: tailscale-monitor
   cancel-in-progress: false
@@ -28,7 +38,10 @@ concurrency:
 jobs:
   poll:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
+    env:
+      LOOP_MINUTES: 50          # stay under the 60 min job timeout
+      POLL_INTERVAL: 300        # seconds between polls
     steps:
       - name: Check out the monitor
         uses: actions/checkout@v7
@@ -40,11 +53,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/state_sync.sh restore
 
-      - name: Poll Tailscale, notify Telegram
+      - name: Poll Tailscale every ${{ env.POLL_INTERVAL }}s, notify Telegram
         env:
           TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAILNET: ${{ vars.TAILNET || '-' }}
           TIMEZONE: ${{ vars.TIMEZONE || 'UTC' }}
           DIGEST_HOUR: ${{ vars.DIGEST_HOUR || '9' }}
@@ -54,16 +68,11 @@ jobs:
           LOG_DIR: .state/logs
           FORCE_DIGEST: ${{ inputs.force_digest }}
           DRY_RUN: ${{ inputs.dry_run }}
-        run: python3 monitor.py
+          SINGLE_RUN: ${{ inputs.single_run }}
+        run: ./scripts/poll_loop.sh
 
-      - name: Persist state
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./scripts/state_sync.sh save
-
-      # The Tailscale API token expires (90 days by default) and the tailnet can
-      # reject calls - without this the monitor would just die quietly.
+      # Tailscale API tokens expire (90 days by default) and the API can fail.
+      # Without this the monitor would just die quietly.
       - name: Tell Telegram the poll failed
         if: failure()
         env:
@@ -75,6 +84,7 @@ jobs:
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "parse_mode=HTML" \
-            --data-urlencode "text=⚠️ <b>Tailscale monitor run failed</b>
-          The poll could not complete (expired API token, API outage or a bad state push).
+            --data-urlencode "text=⚠️ <b>Tailscale monitor stopped</b>
+          Polling failed repeatedly (expired API token, API outage or a bad state push).
+          The watchdog will try again within ~10 minutes.
           <a href=\"${RUN_URL}\">Open the workflow run</a>" > /dev/null
