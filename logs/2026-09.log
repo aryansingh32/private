@@ -1,0 +1,23 @@
+2026-09-16T16:45:18+00:00  NEW      desktop-dk0msot          status=offline
+2026-09-16T16:45:18+00:00  NEW      win                      status=offline
+2026-09-16T16:45:18+00:00  START    monitor initialised with 2 device(s)
+2026-09-16T17:16:01+00:00  ONLINE   win                      previous state lasted 1h 9m
+2026-09-16T17:22:30+00:00  OFFLINE  win                      previous state lasted 6m
+2026-09-17T04:54:46+00:00  ONLINE   desktop-dk0msot          previous state lasted 1d 2h
+2026-09-17T05:35:01+00:00  OFFLINE  desktop-dk0msot          previous state lasted 40m
+2026-09-17T06:05:13+00:00  ONLINE   desktop-dk0msot          previous state lasted 30m
+2026-09-17T06:20:20+00:00  OFFLINE  desktop-dk0msot          previous state lasted 15m
+2026-09-18T04:49:35+00:00  ONLINE   desktop-dk0msot          previous state lasted 22h 29m
+2026-09-18T05:09:41+00:00  OFFLINE  desktop-dk0msot          previous state lasted 20m
+2026-09-18T05:14:44+00:00  ONLINE   desktop-dk0msot          previous state lasted 5m
+2026-09-18T05:24:47+00:00  OFFLINE  desktop-dk0msot          previous state lasted 10m
+2026-09-18T05:34:51+00:00  ONLINE   desktop-dk0msot          previous state lasted 10m
+2026-09-18T05:54:58+00:00  OFFLINE  desktop-dk0msot          previous state lasted 20m
+2026-09-18T08:15:52+00:00  ONLINE   desktop-dk0msot          previous state lasted 2h 20m
+2026-09-18T08:25:55+00:00  OFFLINE  desktop-dk0msot          previous state lasted 10m
+2026-09-18T08:41:01+00:00  ONLINE   desktop-dk0msot          previous state lasted 15m
+2026-09-18T08:46:03+00:00  OFFLINE  desktop-dk0msot          previous state lasted 5m
+2026-09-18T09:21:15+00:00  ONLINE   desktop-dk0msot          previous state lasted 35m
+2026-09-18T09:56:26+00:00  OFFLINE  desktop-dk0msot          previous state lasted 35m
+2026-09-21T04:45:54+00:00  ONLINE   desktop-dk0msot          previous state lasted 2d 18h
+2026-09-21T05:21:06+00:00  OFFLINE  desktop-dk0msot          previous state lasted 35m
